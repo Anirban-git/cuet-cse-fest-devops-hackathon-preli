@@ -2,12 +2,19 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-COPY package*.json ./
+RUN addgroup -g 1001 -S nodejs && adduser -S nodejs -u 1001
 
-RUN npm install --production
+COPY package.json ./
 
-COPY . .
+RUN npm install --omit=dev && npm cache clean --force
+
+COPY src ./src
+
+USER nodejs
 
 EXPOSE 5921
 
-CMD ["npm", "start"]
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:5921/health || exit 1
+
+CMD ["node", "src/gateway.js"]
