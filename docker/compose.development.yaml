@@ -1,6 +1,73 @@
-# services:
-  # backend:
+services:
+  mongodb:
+    image: mongo:7
+    container_name: mongodb-dev
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-password123}
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data_dev:/data/db
+    networks:
+      - app-network-dev
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
-  # gateway:
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile.dev
+    container_name: backend-dev
+    environment:
+      NODE_ENV: development
+      BACKEND_PORT: 3847
+      MONGO_URI: mongodb://${MONGO_ROOT_USERNAME:-admin}:${MONGO_ROOT_PASSWORD:-password123}@mongodb:27017
+      MONGO_DATABASE: ${MONGO_DATABASE:-ecommerce}
+    ports:
+      - "3847:3847"
+    volumes:
+      - ../backend/src:/app/src:ro
+      - ../backend/package.json:/app/package.json:ro
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - app-network-dev
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3847/api/products"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
-  # mongo:
+  gateway:
+    build:
+      context: ../gateway
+      dockerfile: Dockerfile.dev
+    container_name: gateway-dev
+    environment:
+      NODE_ENV: development
+      GATEWAY_PORT: 5921
+      BACKEND_URL: http://backend:3847
+    ports:
+      - "5921:5921"
+    volumes:
+      - ../gateway/src:/app/src:ro
+      - ../gateway/package.json:/app/package.json:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - app-network-dev
+
+volumes:
+  mongo_data_dev:
+
+networks:
+  app-network-dev:
+    driver: bridge
